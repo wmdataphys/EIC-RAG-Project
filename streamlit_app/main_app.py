@@ -10,6 +10,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import TrubricsCallbackHandler
 import os
+import time
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 os.environ["TRUBRICS_EMAIL"] = st.secrets["TRUBRICS_EMAIL"]
@@ -28,6 +29,8 @@ with st.sidebar:
         name = st.text_input("What's your name?")
         submitted = st.form_submit_button("Submit and start")
         if submitted:
+            for key in st.session_state:
+                del st.session_state[key]
             st.session_state["user_name"] = name
 
 if "user_name" not in st.session_state:
@@ -68,39 +71,44 @@ You should not hallicunate nor build up any references, Use only the `context` h
 Make sure not to repeat the same context. Be specific to the exact question asked for.\
     
 Here is the response template:
+---
 # Response template 
 
 - Start with a greeting and a summary of the user's query
-- Use bullet points to list the main points or facts that answer the query. 
-- After answering, analyze the respective source links provided within <ARXIV_ID> and </ARXIV_ID> and keep only the unique links for the next step.
-- Use bulleted list of numbers within square brackets to cite the sources for each point or fact. The numbers should correspond to the order of the sources which will be provided in the end of this reponse.
-- End with a closing remark and a list of sources with their respective URLs as a bullet list explicitly which is enclosed in the tag <ARXIV_ID> and </ARXIV_ID> respectively.\
-
+- Use bullet points to list the main points or facts that answer the query using the information within the tags <context> and <context/>.  
+- After answering, analyze the respective source links provided within <ARXIV_ID> and </ARXIV_ID> and keep only the unique links for the next step. Try to minimize the total number of unique links with no more than 10 unique links for the answer.
+- You will strictly use no more than 10 most unique links for the answer.
+- Use bulleted list of superscript numbers within square brackets to cite the sources for each point or fact. The numbers should correspond to the order of the sources which will be provided in the end of this reponse. Note that for every source, you must provide a URL.
+- End with a closing remark and a list of sources with their respective URLs as a bullet list explicitly with full links which are enclosed in the tag <ARXIV_ID> and </ARXIV_ID> respectively.\
+---
+Here is how an response would look like. Reproduce the same format for your response:
+---
 # Example response
 
----
 Hello, thank you for your question about Retrieval Augmented Generation. Here are some key points about RAG:
 
-- Retrieval Augmented Generation is a technique that combines the strengths of pre-trained language models and information retrieval systems to generate responses or content by leveraging external knowledge[1][2]
-- RAG can be useful when the pre-trained language model alone may not have the necessary information to generate accurate or sufficiently detailed responses, since standard language models like GPT-4 are not capable of accessing real-time or post-training external information directly[1] [3]
-- RAG uses a vector database such as Milvus to index and retrieve relevant documents or text snippets from a knowledge source, and provides them as additional context for the language model[4][5]
-- RAG can benefit from adding citations to the generated outputs, as it can improve their factual correctness, verifiability, and trustworthiness[6][7]
+- Retrieval Augmented Generation is a technique that combines the strengths of pre-trained language models and information retrieval systems to generate responses or content by leveraging external knowledge[^1^] [^2^]
+- RAG can be useful when the pre-trained language model alone may not have the necessary information to generate accurate or sufficiently detailed responses, since standard language models like GPT-4 are not capable of accessing real-time or post-training external information directly[^1^] [^3^]
+- RAG uses a vector database such as Milvus to index and retrieve relevant documents or text snippets from a knowledge source, and provides them as additional context for the language model[^4^] [^5^]
+- RAG can benefit from adding citations to the generated outputs, as it can improve their factual correctness, verifiability, and trustworthiness[^6^] [^7^]
 
-I hope this helps you understand more about RAG. Here are the sources that I used for this response:
+I hope this helps you understand more about RAG.
 
-* [1]: http://arxiv.org/abs/2308.03393v1 
+## Sources
 
-* [2]: http://arxiv.org/abs/2308.03393v1 
+* [^1^][1]: http://arxiv.org/abs/2308.03393v1 
 
-* [3]: http://arxiv.org/abs/2307.08593v1 
+* [^2^][2]: http://arxiv.org/abs/2308.03393v1 
 
-* [4]: http://arxiv.org/abs/2202.05981v2 
+* [^3^][3]: http://arxiv.org/abs/2307.08593v1 
 
-* [5]: http://arxiv.org/abs/2210.09287v1 
+* [^4^][4]: http://arxiv.org/abs/2202.05981v2 
 
-* [6]: http://arxiv.org/abs/2242.05981v2 
+* [^5^][5]: http://arxiv.org/abs/2210.09287v1 
 
-* [7]: http://arxiv.org/abs/2348.05293v1 
+* [^6^][6]: http://arxiv.org/abs/2242.05981v2 
+
+* [^7^][7]: http://arxiv.org/abs/2348.05293v1 
 
 ---
 
@@ -116,7 +124,7 @@ bank, not part of the conversation with the user. The context are numbered based
 Make sure to consider the order in which they appear context appear. It is an increasing order of cosine similarity index.\
 The contents are formatted in latex, you need to remove any special characters and latex formatting before cohercing the points to build your answer.\
 Write your answer in the form of markdown bullet points. You can use latex commands if necessary.
-You will cite no more than 10 unqiue citations at maximum from the context below.\
+You will strictly cite no more than 10 unqiue citations at maximum from the context below.\
 Make sure these citations have to be relavant and strictly do not repeat the context in the answer.
 
 <context>
@@ -176,10 +184,13 @@ if prompt := st.chat_input("What is up?"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
         full_response = ""
-        for chunk in rag_chain_with_source.stream(prompt):
-            full_response += (chunk.get("answer") or "")
-            message_placeholder.markdown(full_response + "▌")
-        message_placeholder.markdown(full_response)
+        allchunks = None
+        with st.spinner("Gathering info from Knowledge Bank and writing response..."):
+            allchunks = rag_chain_with_source.stream(prompt)
+            message_placeholder = st.empty()
+            for chunk in allchunks:
+                full_response += (chunk.get("answer") or "")
+                message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
     st.session_state.messages.append({"role": "assistant", "content": full_response})
