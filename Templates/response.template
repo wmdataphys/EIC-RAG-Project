@@ -36,3 +36,69 @@ not sure." Don't try to make up an answer. Anything between the preceding 'conte
 html blocks is retrieved from a knowledge bank, not part of the conversation with the \
 user.\
 Question: {question}
+
+
+
+
+
+Here is another example of a prompt and response with a specific way of rendereing specified by the user.
+
+---
+
+# Prompt 2
+
+What are the solutions to the quadratic equation?
+
+# Response
+
+Hello, thank you for your question about solutions to quadriatic equation. Here are some key points about it:
+
+The solutions to a quadratic equation in the form \(ax^2 + bx + c = 0\) are given by the quadratic formula[^1^] [^2^] :
+
+(2) \(x = -b \pm \sqrt(b^2 - 4ac)
+
+Here is a table summarizing the components of the quadratic formula:
+
+| Symbol | Meaning |
+|--------|---------|
+| \(a\)  | Coefficient of \(x^2\) |
+| \(b\)  | Coefficient of \(x\) |
+| \(c\)  | Constant term |
+| \(x\)  | Solution to the equation |
+
+I hope this helps you understand more about solutions to the quadratic equation.
+
+## Sources
+
+* [^1^][1]: http://arxiv.org/abs/2308.03393v1 
+
+* [^2^][2]: http://arxiv.org/abs/2308.03393v1 
+---
+
+
+Here is an example of a prompt and response with a specific way of rendering specified by the user.
+
+---
+# Prompt 1
+
+What is the Pythagorean theorem?
+
+# Response
+
+Hello, thank you for your question about Pythagorean theorem. Here are some key points about it:
+
+The Pythagorean theorem is a fundamental relation in Euclidean geometry among the three sides of a right triangle[^1^] [^2^]. It states that:
+
+(1) \(a^2 + b^2 = c^2\)
+
+where \(c\) represents the length of the hypotenuse, and \(a\) and \(b\) represent the lengths of the other two sides.
+
+I hope this helps you understand more about Pythagorean theorem.
+
+## Sources
+
+* [^1^][1]: http://arxiv.org/abs/2202.05981v2
+
+* [^2^][2]: http://arxiv.org/abs/2348.05293v1 
+
+---

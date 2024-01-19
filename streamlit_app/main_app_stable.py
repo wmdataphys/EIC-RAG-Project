@@ -9,7 +9,6 @@ from langchain_community.vectorstores import LanceDB
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import TrubricsCallbackHandler
-from trubrics.integrations.streamlit import FeedbackCollector
 import os
 import time
 
@@ -32,17 +31,19 @@ with st.sidebar:
         if submitted:
             for key in st.session_state:
                 del st.session_state[key]
-            st.session_state["user_name"] = name.lower()
+            st.session_state["user_name"] = name
 
 if "user_name" not in st.session_state:
     st.stop()
-
-# 1. authenticate with trubrics
-collector = FeedbackCollector(
-    email=st.secrets.TRUBRICS_EMAIL,
-    password=st.secrets.TRUBRICS_PASSWORD,
-    project="default"
-)
+llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0, 
+                 callbacks=[
+                     TrubricsCallbackHandler(
+                         project="EIC-RAG-TestRun",
+                         tags = ["EIC-RAG-TestRun"],
+                         user_id = st.session_state["user_name"],
+                                             )
+                     ], 
+                 max_tokens=4096)
 
 from langchain.schema import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
@@ -54,26 +55,22 @@ def format_docs(docs):
 
 from langchain.prompts import PromptTemplate
 
+
 response = """\
-You are an expert in providing up-to-date information about the Electron Ion Collider (EIC). Your task is to answer any questions about the EIC based solely on the provided context. 
+You are an expert in providing up to date information about the Electron Ion Collider (EIC), tasked with answering any question. You greet people when greeted. \
+about EIC based only on the provided context. You shall strictly not answer questions anything other than EIC related questions. \
+Refrain any other topics by saying you will not answer questions about them and Exit right away here. DO NOT PROCEED. \
+You are not allowed to use any other sources other than the provided search results. \
 
-Please note the following guidelines:
-
-- Greet people when greeted.
-- Do not answer questions on topics other than the EIC. If asked about other topics, state that you will not answer questions about them and exit immediately.
-- Do not use any sources other than the provided search results.
-- Generate a comprehensive and informative answer within 200 words or less for the given question, based solely on the provided search results (URL and content). 
-- Use an unbiased and journalistic tone.
-- Combine search results into a coherent answer without repeating text.
-- Use bullet points in your answer for readability. Break down your answer into bullet points.
-- Do not hallucinate or build up any references. Use only the `context` HTML block below and do not use any text within <ARXIV_ID> and </ARXIV_ID> except when citing at the end.
-- Be specific to the exact question asked for. Do not repeat the same context.
-- Strictly provide links to the references and strictly do not provide title for the references and Strictly do not repeat the same links. 
-- Your references have to strictly follow the `Example response`. 
-- Strictly use the styling of response based on the `Example response`.
-
-Here is the response template that you need strictly follow:
-
+Generate a comprehensive, and informative answer strictly within 200 words or less for the \
+given question based solely on the provided search results (URL and content). You must \
+only use information from the provided search results. Use an unbiased and \
+journalistic tone. Combine search results together into a coherent answer. Do not \
+repeat text. You should use bullet points in your answer for readability. Make sure to break down your answer into bullet points.\
+You should not hallicunate nor build up any references, Use only the `context` html block below and do not use any text within <ARXIV_ID> and </ARXIV_ID> except when citing in the end. 
+Make sure not to repeat the same context. Be specific to the exact question asked for.\
+    
+Here is the response template:
 ---
 # Response template 
 
@@ -84,9 +81,7 @@ Here is the response template that you need strictly follow:
 - Use bulleted list of superscript numbers within square brackets to cite the sources for each point or fact. The numbers should correspond to the order of the sources which will be provided in the end of this reponse. Note that for every source, you must provide a URL.
 - End with a closing remark and a list of sources with their respective URLs as a bullet list explicitly with full links which are enclosed in the tag <ARXIV_ID> and </ARXIV_ID> respectively.\
 ---
-
 Here is how an response would look like. Reproduce the same format for your response:
-
 ---
 # Example response
 
@@ -98,6 +93,8 @@ Hello, thank you for your question about Retrieval Augmented Generation. Here ar
 - RAG can benefit from adding citations to the generated outputs, as it can improve their factual correctness, verifiability, and trustworthiness[^6^] [^7^]
 
 I hope this helps you understand more about RAG.
+
+## Sources
 
 * [^1^][1]: http://arxiv.org/abs/2308.03393v1 
 
@@ -115,10 +112,12 @@ I hope this helps you understand more about RAG.
 
 ---
 
-Where each of the references are taken from the corresponding <ARXIV_ID> in the context.  \
+Where each of the references are taken from the corresponding <ARXIV_ID> in the context. Strictly do not provide title for the references \
+Strictly do not repeat the same links. Use the numbers to cite the sources. \
 
 If there is nothing in the context relevant to the question at hand, just say "Hmm, \
-I'm not sure." or greet back. Don't try to make up an answer.
+I'm not sure." or greet back. Don't try to make up an answer. Write the answer in the form of markdown bullet points.\
+Make sure to highlight the most important key words in bold font. Dot repeat any context nor points in the answer.\
 
 Anything between the following `context`  html blocks is retrieved from a knowledge \
 bank, not part of the conversation with the user. The context are numbered based on its knowledge retrival and increasing cosine similarity index. \
@@ -126,7 +125,8 @@ Make sure to consider the order in which they appear context appear. It is an in
 The contents are formatted in latex, you need to remove any special characters and latex formatting before cohercing the points to build your answer.\
 Write your answer in the form of markdown bullet points. You can use latex commands if necessary.
 You will strictly cite no more than 10 unqiue citations at maximum from the context below.\
-Make sure these citations have to be relavant and strictly do not repeat the context in the answer.\
+Make sure these citations have to be relavant and strictly do not repeat the context in the answer.
+
 <context>
     {context}
 <context/>
@@ -138,23 +138,6 @@ user.\
 Question: {question}
 """
 rag_prompt_custom = PromptTemplate.from_template(response)
-
-llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0, 
-                 callbacks=[
-                     TrubricsCallbackHandler(
-                         project="EIC-RAG-TestRun",
-                         config_model={
-                             "model" : "gpt-3.5-turbo-1106",
-                             "temperature" : 0,
-                             "max_tokens" : 4096,
-                             "prompt_template" : "rag_prompt_custom",
-                         },
-                         tags = ["EIC-RAG-TestRun"],
-                         user_id = st.session_state["user_name"],
-                                             )
-                     ], 
-                 max_tokens=4096)
-
 
 from operator import itemgetter
 
@@ -210,6 +193,4 @@ if prompt := st.chat_input("What is up?"):
                 full_response += (chunk.get("answer") or "")
                 message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
-            #with st.status("Its Feedback time"):
-            #    st.
     st.session_state.messages.append({"role": "assistant", "content": full_response})
