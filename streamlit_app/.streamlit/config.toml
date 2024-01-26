@@ -1,0 +1,8 @@
+[server]
+runOnSave = false
+port = 8050
+
+[theme]
+base = "dark"
+primaryColor="purple"
+font = "sans serif"

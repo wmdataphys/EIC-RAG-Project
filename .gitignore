@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# The Vector DB
+*EIC_PyPDF*
+# No database 
+*.sqlite
 # C extensions
 *.so
 

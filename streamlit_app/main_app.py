@@ -1,11 +1,10 @@
 from openai import OpenAI
 import streamlit as st
 
-import os
+import os, sys
 from trubrics import Trubrics
 
-import lancedb
-from langchain_community.vectorstores import LanceDB
+
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import TrubricsCallbackHandler
@@ -13,43 +12,116 @@ from trubrics.integrations.streamlit import FeedbackCollector
 import os
 import time
 
+from app_utilities import *
+    
+
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 os.environ["TRUBRICS_EMAIL"] = st.secrets["TRUBRICS_EMAIL"]
 os.environ["TRUBRICS_PASSWORD"] = st.secrets["TRUBRICS_PASSWORD"]
 
-db = lancedb.connect("/mnt/d/LLM-Project/my-app/lancedb_meta_data")
-table = db.open_table("EIC_archive")
+if st.secrets.get("LANGCHAIN_API_KEY"):
+    os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+    os.environ["LANGCHAIN_TRACING_V2"] = st.secrets["LANGCHAIN_TRACING_V2"]
+    os.environ["LANGCHAIN_PROJECT"] = st.secrets["LANGCHAIN_PROJECT"]
+    os.environ["LANGCHAIN_ENDPOINT"] = st.secrets["LANGCHAIN_ENDPOINT"]
+    
+# Check if users db exists
+
+if not st.secrets.get("USER_DB"):
+    st.error("Users DB not provided. Please provide in secrets.toml and then run the app again")
+    Exception("Users DB not provided. Please provide in secrets.toml and then run the app again")
+
+if not os.path.exists(st.secrets["USER_DB"]):
+    st.error(f"Users DB {st.secrets['USER_DB']} does not exist.")
+    Exception("Users DB does not exist. Please provide in secrets.toml and then run the app again")
+
+os.environ["USER_DB"] = st.secrets["USER_DB"]
+
+
+# Creating OpenAIEmbedding()
+
 embeddings = OpenAIEmbeddings()
-vectorstore = LanceDB(connection = table, embedding = embeddings)
+# Defining some props of DB
+SimilarityDict = {"Cosine similarity" : "similarity", "MMR" : "mmr"}
 
-retriever = vectorstore.as_retriever(search_type = "similarity", search_kwargs={"k" : 100})
+DBProp = {"LANCE" : {"vector_config" : {"db_name" : st.secrets["LANCEDB_DIR"], 
+                                        "table_name" : "EIC_archive", 
+                                        "embedding_function" : embeddings
+                                        },
+                     "search_config" : {"metric" : "similarity", 
+                                        "search_kwargs" : {"k" : 100}
+                                        },
+                     "available_metrics" : ["Cosine similarity"]
+                     },
+          "CHROMA" : {"vector_config" : {"db_name" : st.secrets["CHROMADB_DIR"], 
+                                         "embedding_function" : embeddings, 
+                                         "collection_name" : "ARXIVS"
+                                         },
+                      "search_config" : {"metric" : "similarity",
+                                         "search_kwargs" : {"k" : 100}
+                                         },
+                      "available_metrics" : ["Cosine similarity", "MMR"]
+                      }
+          }
+# Creating retriever
 
+retriever = GetRetriever("LANCE", DBProp["LANCE"]["vector_config"], DBProp["LANCE"]["search_config"])
+st.set_page_config(page_title="AI4EIC-RAG QA-ChatBot", page_icon="https://indico.bnl.gov/event/19560/logo-410523303.png", layout="wide")
+st.warning("This project is being continuously developed. Please report any feedback to ai4eic@gmail.com")
+col_l, col1, col2, col_r = st.columns([1, 3, 3, 1])
+with col1:
+    st.image("https://indico.bnl.gov/event/19560/logo-410523303.png")
+with col2:
+    st.title("""AI4EIC - RAG QA-ChatBot""", anchor = "AI4EIC-RAG-QA-Bot", help = "Will Link to arxiv proceeding here.")
 with st.sidebar:
     with st.form("User Name"):
         st.info("By providing you name, you agree that all the prompts and responses will be recorded and will be used to further improve RAG methods")
-        name = st.text_input("What's your name?")
+        name = st.text_input("What's your username?")
         submitted = st.form_submit_button("Submit and start")
         if submitted:
-            for key in st.session_state:
-                del st.session_state[key]
-            st.session_state["user_name"] = name.lower()
+            userInfo = get_user_info(os.environ["USER_DB"], name)
+            if (userInfo == None):
+                st.error("User not found. Please try again")
+                st.stop()
+            else:
+                for key in st.session_state:
+                    del st.session_state[key]
+                st.session_state["user_name"] = userInfo[0].lower()
+                st.session_state["first_name"] =  userInfo[1]
+                st.session_state["last_name"] =  userInfo[2]
+                st.success("Welcome {} {}!".format(userInfo[1], userInfo[2]))
+    if (st.session_state.get("user_name")):
+        with st.container():
+            st.info("Select VecDB and Properties")
+            db_type = st.selectbox("Vector DB", ["LANCE", "CHROMA"])
+            similiarty_score = st.selectbox("Retrieval Metric", DBProp[db_type]["available_metrics"])
+            max_k = st.select_slider("Max K", options = [10, 20, 30, 40, 50, 100, 150], value = 100)
+            if st.button("Select Vector DB"):
+                DBProp[db_type]["search_config"]["search_kwargs"]["k"] = max_k
+                DBProp[db_type]["search_config"]["metric"] = SimilarityDict[similiarty_score]
+                retriever = GetRetriever(db_type, DBProp[db_type]["vector_config"], DBProp[db_type]["search_config"])
 
 if "user_name" not in st.session_state:
     st.stop()
 
-# 1. authenticate with trubrics
-collector = FeedbackCollector(
-    email=st.secrets.TRUBRICS_EMAIL,
-    password=st.secrets.TRUBRICS_PASSWORD,
-    project="default"
-)
+if retriever == None:
+    st.stop()
 
 from langchain.schema import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
 
 
 def format_docs(docs):
-    return f"\n\n".join(f'{i+1}. ' + doc.page_content.strip("\n") + f"<ARXIV_ID> {doc.metadata['arxiv_id']} <ARXIV_ID/>" for i, doc in enumerate(docs))
+    print (f"Length of the docs is {len(docs)}")
+    unique_arxiv = list(set(doc.metadata['arxiv_id'] for doc in docs))
+    mkdown = """# Retrieved documents \n"""
+    for idx, u_ar in enumerate(unique_arxiv):
+        mkdown += f"""{idx + 1}. <ARXIV_ID> {u_ar} <ARXIV_ID/> \n
+        """
+        for i, doc in enumerate(docs):
+            if doc.metadata['arxiv_id'] == u_ar:
+                mkdown += """  * """ + doc.page_content.strip("\n") + " \n"
+    return mkdown
 
 
 from langchain.prompts import PromptTemplate
@@ -68,9 +140,7 @@ Please note the following guidelines:
 - Use bullet points in your answer for readability. Break down your answer into bullet points.
 - Do not hallucinate or build up any references. Use only the `context` HTML block below and do not use any text within <ARXIV_ID> and </ARXIV_ID> except when citing at the end.
 - Be specific to the exact question asked for. Do not repeat the same context.
-- Strictly provide links to the references and strictly do not provide title for the references and Strictly do not repeat the same links. 
-- Your references have to strictly follow the `Example response`. 
-- Strictly use the styling of response based on the `Example response`.
+- Strictly provide links to the references and do not provide title for the references and Strictly do not repeat the same links. 
 
 Here is the response template that you need strictly follow:
 
@@ -80,9 +150,12 @@ Here is the response template that you need strictly follow:
 - Start with a greeting and a summary of the user's query
 - Use bullet points to list the main points or facts that answer the query using the information within the tags <context> and <context/>.  
 - After answering, analyze the respective source links provided within <ARXIV_ID> and </ARXIV_ID> and keep only the unique links for the next step. Try to minimize the total number of unique links with no more than 10 unique links for the answer.
-- You will strictly use no more than 10 most unique links for the answer.
+- Rewrite the answer in this stage such that you will strictly use no more than 10 most unique links for the answer. Your reference numbers should start from 1, which will be provided in the end of this reponse. Note that for every source, you must provide a URL.
+- While writing your answer you need to strictly follow the `Example reponse` as template for your answer. Specifically, strictly follow the superscript numbers within square brackets to cite the sources for each point or fact.
 - Use bulleted list of superscript numbers within square brackets to cite the sources for each point or fact. The numbers should correspond to the order of the sources which will be provided in the end of this reponse. Note that for every source, you must provide a URL.
-- End with a closing remark and a list of sources with their respective URLs as a bullet list explicitly with full links which are enclosed in the tag <ARXIV_ID> and </ARXIV_ID> respectively.\
+- End with a closing remark and a list of sources with their respective URLs as a bullet list explicitly with full links which are enclosed in the tag <ARXIV_ID> and </ARXIV_ID> respectively.
+- Your references have to strictly follow the `Example response` as template.
+- Strictly use the styling of response based on the `Example response`.
 ---
 
 Here is how an response would look like. Reproduce the same format for your response:
@@ -99,19 +172,13 @@ Hello, thank you for your question about Retrieval Augmented Generation. Here ar
 
 I hope this helps you understand more about RAG.
 
-* [^1^][1]: http://arxiv.org/abs/2308.03393v1 
-
-* [^2^][2]: http://arxiv.org/abs/2308.03393v1 
-
-* [^3^][3]: http://arxiv.org/abs/2307.08593v1 
-
-* [^4^][4]: http://arxiv.org/abs/2202.05981v2 
-
-* [^5^][5]: http://arxiv.org/abs/2210.09287v1 
-
-* [^6^][6]: http://arxiv.org/abs/2242.05981v2 
-
-* [^7^][7]: http://arxiv.org/abs/2348.05293v1 
+- [^1^][1]: http://arxiv.org/abs/2308.03393v1 
+- [^2^][2]: http://arxiv.org/abs/2308.03393v1 
+- [^3^][3]: http://arxiv.org/abs/2307.08593v1 
+- [^4^][4]: http://arxiv.org/abs/2202.05981v2 
+- [^5^][5]: http://arxiv.org/abs/2210.09287v1 
+- [^6^][6]: http://arxiv.org/abs/2242.05981v2 
+- [^7^][7]: http://arxiv.org/abs/2348.05293v1 
 
 ---
 
@@ -137,7 +204,26 @@ html blocks is retrieved from a knowledge bank, not part of the conversation wit
 user.\
 Question: {question}
 """
+response_rewrite = """\
+Follow the instructions very very strictly. Do not add anything else in the response. Do not hallucinate nor make up answers.
+- The content below within the tags <MARKDOWN_RESPONSE> and </MARKDOWN_RESPONSE> is presented within a `st.markdown` container in a streamlit chat window. 
+- It may have some syntax errors and improperly arranged citations. 
+- Strictly do no modify the reference URL nor its text.
+- Identify unique reference URL links from the context below and cite them in the form of superscripts.  
+- The new citations should be numerical and start from one. There has to be atleast one citation in the response.
+- Make sure to only use github flavoured markdown syntax for citations. The superscripts should not be in html tags.
+- Check for GitHub flavoured Markdown syntax and Importantly correct the syntax to be compatible with GitHub flavoured Markdown and specifically the superscripts, and arrange the new citations to be numerical starting from one.
+- The content may have latex commands as well. Edit them to make it compatible within Github flavoured markdown by adding $ before and after the latex command.
+- Make sure the citations are superscripted and has to be displayed properly when presented in a chat window. 
+- Do not include the <MARKDOWN_RESPONSE> and <MARKDOWN_RESPONSE/> tags in your answer.
+- Strictly do no modify the reference URL nor its text. Strictly have only Footnotes with reference links in style of GithubFlavoured markdown -
+- Do not create any additional list of links other than Footnotes in your answer.
+<MARKDOWN_RESPONSE>
+{markdown_response}
+<MARKDOWN_RESPONSE/>
+"""
 rag_prompt_custom = PromptTemplate.from_template(response)
+rag_prompt_rewrite = PromptTemplate.from_template(response_rewrite)
 
 llm = ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0, 
                  callbacks=[
@@ -167,23 +253,14 @@ rag_chain_from_docs = (
     }
     | rag_prompt_custom
     | llm
-    | StrOutputParser()
+    | {"markdown_response" : StrOutputParser()} | rag_prompt_rewrite | llm | StrOutputParser()
 )
+
 rag_chain_with_source = RunnableMap(
     {"documents": retriever, "question": RunnablePassthrough()}
 ) | {
     "answer": rag_chain_from_docs,
 }
-
-st.warning("This project is being continuously developed. Please report any feedback to ai4eic@gmail.com")
-
-col1, col2 = st.columns(2)
-with col1:
-    st.image("https://indico.bnl.gov/event/19560/logo-410523303.png")
-with col2:
-    st.title("AI4EIC Agent")
-
-st.sidebar.title("Data Collection")
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-3.5-turbo"
@@ -199,7 +276,6 @@ if prompt := st.chat_input("What is up?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-
     with st.chat_message("assistant"):
         full_response = ""
         allchunks = None
