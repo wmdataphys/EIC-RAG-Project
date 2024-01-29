@@ -13,7 +13,6 @@ import os
 import time
 
 from app_utilities import *
-    
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 os.environ["TRUBRICS_EMAIL"] = st.secrets["TRUBRICS_EMAIL"]
@@ -65,7 +64,7 @@ DBProp = {"LANCE" : {"vector_config" : {"db_name" : st.secrets["LANCEDB_DIR"],
           }
 # Creating retriever
 
-retriever = GetRetriever("LANCE", DBProp["LANCE"]["vector_config"], DBProp["LANCE"]["search_config"])
+retriever = GetRetriever("CHROMA", DBProp["CHROMA"]["vector_config"], DBProp["CHROMA"]["search_config"])
 st.set_page_config(page_title="AI4EIC-RAG QA-ChatBot", page_icon="https://indico.bnl.gov/event/19560/logo-410523303.png", layout="wide")
 st.warning("This project is being continuously developed. Please report any feedback to ai4eic@gmail.com")
 col_l, col1, col2, col_r = st.columns([1, 3, 3, 1])
@@ -93,7 +92,7 @@ with st.sidebar:
     if (st.session_state.get("user_name")):
         with st.container():
             st.info("Select VecDB and Properties")
-            db_type = st.selectbox("Vector DB", ["LANCE", "CHROMA"])
+            db_type = st.selectbox("Vector DB", ["CHROMA", "LANCE"])
             similiarty_score = st.selectbox("Retrieval Metric", DBProp[db_type]["available_metrics"])
             max_k = st.select_slider("Max K", options = [10, 20, 30, 40, 50, 100, 150], value = 100)
             if st.button("Select Vector DB"):
@@ -204,6 +203,7 @@ html blocks is retrieved from a knowledge bank, not part of the conversation wit
 user.\
 Question: {question}
 """
+response = open("/mnt/d/LLM-Project/FinalRAG-Retrieval/EIC-RAG-Project/Templates/reponse_01.template", "r").read()
 response_rewrite = """\
 Follow the instructions very very strictly. Do not add anything else in the response. Do not hallucinate nor make up answers.
 - The content below within the tags <MARKDOWN_RESPONSE> and </MARKDOWN_RESPONSE> is presented within a `st.markdown` container in a streamlit chat window. 

@@ -1,4 +1,4 @@
-import os, sqlite3, lancedb
+import os, sqlite3, lancedb, tiktoken
 from enum import Enum
 from langchain_community.vectorstores import LanceDB, Chroma
 
@@ -46,3 +46,22 @@ def GetRetriever(TYPE: str, vector_config: dict, search_config = {}):
                                      )
     else:
         raise NotImplementedError("Invalid VectorDB type")
+
+def num_tokens_from_prompt(prompt: str, model: str) -> int:
+        """Return the number of tokens used by a prompt."""
+        encoding = tiktoken.encoding_for_model(model)
+        return len(encoding.encode(prompt))
+def num_tokens_from_messages(messages, model) -> int:
+        """Return the number of tokens used by a list of messages."""
+        encoding = tiktoken.encoding_for_model(model)
+        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
+        tokens_per_name = 1
+        num_tokens = 0
+        for message in messages:
+            num_tokens += tokens_per_message
+            for key, value in message.items():
+                num_tokens += len(encoding.encode(value))
+                if key == "name":
+                    num_tokens += tokens_per_name
+        num_tokens += 4  # every reply is primed with <|start|>assistant<|message|>
+        return num_tokens
