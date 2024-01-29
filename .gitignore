@@ -10,7 +10,7 @@ __pycache__/
 # C extensions
 *.so
 
-*.streamlit
+*.streamlit*
 *.toml*
 *secrets.toml*
 
