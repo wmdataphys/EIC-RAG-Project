@@ -5,15 +5,12 @@ __pycache__/
 
 # The Vector DB
 *EIC_PyPDF*
-# No database 
-*.sqlite
 # C extensions
 *.so
 
-*.streamlit*
-streamlit_app/.streamlit
-*.toml*
-*secrets.toml*
+.streamlit
+streamlit_app/.streamlit/
+*.toml
 
 # Distribution / packaging
 .Python
