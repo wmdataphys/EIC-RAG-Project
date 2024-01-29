@@ -10,8 +10,6 @@ if st.secrets.get("LANGCHAIN_API_KEY"):
     os.environ["LANGCHAIN_TRACING_V2"] = st.secrets["LANGCHAIN_TRACING_V2"]
     os.environ["LANGCHAIN_PROJECT"] = st.secrets["LANGCHAIN_PROJECT"]
     os.environ["LANGCHAIN_ENDPOINT"] = st.secrets["LANGCHAIN_ENDPOINT"]
-    
-st.set_page_config(page_title=, page_icon=, layout="wide")
 
 st.set_page_config(
     page_title="AI4EIC-RAG QA-ChatBot",

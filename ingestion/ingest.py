@@ -14,7 +14,6 @@ def SaveFromPDF(args):
     CHUNKING_TYPE = args.chunking
     if(args.db_api_key):
         os.environ["PINECONE_API_KEY"] = args.db_api_key
-        os.environ["PINECONE_ENV"] = "gcp-starter"
         pc = Pinecone(api_key = os.environ["PINECONE_API_KEY"])
         if COLLECTION_NAME not in pc.list_indexes().names():
             pc.create_index(name = COLLECTION_NAME, 
@@ -31,7 +30,7 @@ def SaveFromPDF(args):
     DO = False
     for pdf in AllPDFs:
         if not DO:
-            if pdf == "/mnt/d/LLM-Project/FinalRAG-Retrieval/ARXIV_SOURCES/2211.09698v2/2211.09698v2.pdf":
+            if pdf == "/mnt/d/LLM-Project/FinalRAG-Retrieval/ARXIV_SOURCES/2305.15593v1/2305.15593v1.pdf":
                 DO = True
             continue
         print ("Processing: " + pdf)

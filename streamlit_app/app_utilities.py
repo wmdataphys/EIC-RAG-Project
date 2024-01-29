@@ -1,6 +1,8 @@
 import os, sqlite3, lancedb, tiktoken
+from pinecone import Pinecone, ServerlessSpec
 from enum import Enum
 from langchain_community.vectorstores import LanceDB, Chroma
+from langchain_community.vectorstores import Pinecone as LangPinecone
 
 class UserNotFoundError(Exception):
     pass
@@ -26,6 +28,7 @@ def get_user_info(db_name, username):
 class VectorDB(Enum):
     LANCE = 1
     CHROMA = 2
+    PINECONE = 3
     
 
 def GetRetriever(TYPE: str, vector_config: dict, search_config = {}):
@@ -44,6 +47,15 @@ def GetRetriever(TYPE: str, vector_config: dict, search_config = {}):
                       ).as_retriever(search_type = search_config.get("metric", "similarity"), 
                                      search_kwargs=search_config.get("search_kwargs", {"k" : 100})
                                      )
+    elif TYPE == VectorDB.PINECONE.name:
+        pc = Pinecone(api_key = vector_config["db_api_key"])
+        if vector_config["index_name"] not in pc.list_indexes().names():
+            raise DBNotFoundError(f"Database {vector_config['db_name']} does not exist.")
+        return LangPinecone.from_existing_documents(vector_config["index_name"], 
+                                                    vector_config["embedding_function"]
+                                                    ).as_retriever(search_type = search_config.get("metric", "similarity"), 
+                                                                   search_kwargs=search_config.get("search_kwargs", {"k" : 100})
+                                                                   )
     else:
         raise NotImplementedError("Invalid VectorDB type")
 
