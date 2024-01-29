@@ -11,6 +11,7 @@ __pycache__/
 *.so
 
 *.streamlit*
+streamlit_app/.streamlit
 *.toml*
 *secrets.toml*
 
