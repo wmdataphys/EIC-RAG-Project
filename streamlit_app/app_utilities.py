@@ -1,4 +1,4 @@
-import os, sqlite3, lancedb, tiktoken
+import os, sqlite3, lancedb, tiktoken, bcrypt
 from pinecone import Pinecone, ServerlessSpec
 from enum import Enum
 from langchain_community.vectorstores import LanceDB, Chroma
@@ -9,14 +9,17 @@ class UserNotFoundError(Exception):
 
 class DBNotFoundError(Exception):
     pass
-
+def hash_password(password: str):
+    bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(bytes, salt)
 def get_user_info(db_name, username):
     if not os.path.exists(db_name):
         raise FileNotFoundError(f"Database {db_name} does not exist.")
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT username, first_name, last_name FROM users WHERE username = ?
+        SELECT username, first_name, last_name, password FROM users WHERE username = ?
     ''', (username,))
     user = cursor.fetchone()
     conn.close()
@@ -50,8 +53,8 @@ def GetRetriever(TYPE: str, vector_config: dict, search_config = {}):
     elif TYPE == VectorDB.PINECONE.name:
         pc = Pinecone(api_key = vector_config["db_api_key"])
         if vector_config["index_name"] not in pc.list_indexes().names():
-            raise DBNotFoundError(f"Database {vector_config['db_name']} does not exist.")
-        return LangPinecone.from_existing_documents(vector_config["index_name"], 
+            raise DBNotFoundError(f"Database {vector_config['index_name']} does not exist.")
+        return LangPinecone.from_existing_index(vector_config["index_name"], 
                                                     vector_config["embedding_function"]
                                                     ).as_retriever(search_type = search_config.get("metric", "similarity"), 
                                                                    search_kwargs=search_config.get("search_kwargs", {"k" : 100})

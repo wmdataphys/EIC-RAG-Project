@@ -1,7 +1,7 @@
 from openai import OpenAI
 import streamlit as st
 
-import os, sys
+import os, bcrypt
 from trubrics import Trubrics
 
 
@@ -60,7 +60,16 @@ DBProp = {"LANCE" : {"vector_config" : {"db_name" : st.secrets["LANCEDB_DIR"],
                                          "search_kwargs" : {"k" : 100}
                                          },
                       "available_metrics" : ["Cosine similarity", "MMR"]
-                      }
+                      },
+          "PINECONE" : {"vector_config" : {"db_api_key" : st.secrets["PINECONE_API_KEY"], 
+                                            "index_name" : "llm-project", 
+                                            "embedding_function" : embeddings
+                                            },
+                        "search_config" : {"metric" : "similarity", 
+                                           "search_kwargs" : {"k" : 100}
+                                           },
+                        "available_metrics" : ["Cosine similarity", "MMR"]
+                        },
           }
 # Creating retriever
 
@@ -74,13 +83,17 @@ with col2:
     st.title("""AI4EIC - RAG QA-ChatBot""", anchor = "AI4EIC-RAG-QA-Bot", help = "Will Link to arxiv proceeding here.")
 with st.sidebar:
     with st.form("User Name"):
-        st.info("By providing you name, you agree that all the prompts and responses will be recorded and will be used to further improve RAG methods")
+        st.info("By providing your name, you agree that all the prompts and responses will be recorded and will be used to further improve RAG methods")
         name = st.text_input("What's your username?")
+        password = st.text_input("What's your password?", type="password")
         submitted = st.form_submit_button("Submit and start")
         if submitted:
             userInfo = get_user_info(os.environ["USER_DB"], name)
             if (userInfo == None):
                 st.error("User not found. Please try again")
+                st.stop()
+            elif (userInfo[-1]!= password):
+                st.error("Incorrect password. Please try again")
                 st.stop()
             else:
                 for key in st.session_state:
@@ -92,7 +105,7 @@ with st.sidebar:
     if (st.session_state.get("user_name")):
         with st.container():
             st.info("Select VecDB and Properties")
-            db_type = st.selectbox("Vector DB", ["CHROMA", "LANCE"])
+            db_type = st.selectbox("Vector DB", ["PINECONE"])
             similiarty_score = st.selectbox("Retrieval Metric", DBProp[db_type]["available_metrics"])
             max_k = st.select_slider("Max K", options = [10, 20, 30, 40, 50, 100, 150], value = 100)
             if st.button("Select Vector DB"):
@@ -119,7 +132,7 @@ def format_docs(docs):
         """
         for i, doc in enumerate(docs):
             if doc.metadata['arxiv_id'] == u_ar:
-                mkdown += """  * """ + doc.page_content.strip("\n") + " \n"
+                mkdown += """  *\t""" + doc.page_content.strip("\n") + " \n"
     return mkdown
 
 
