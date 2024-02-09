@@ -3,6 +3,16 @@ from pinecone import Pinecone, ServerlessSpec
 from enum import Enum
 from langchain_community.vectorstores import LanceDB, Chroma
 from langchain_community.vectorstores import Pinecone as LangPinecone
+import streamlit as st
+
+def SetHeader(page_title: str):
+    st.set_page_config(page_title=page_title, page_icon="https://indico.bnl.gov/event/19560/logo-410523303.png", layout="wide")
+    st.warning("This project is being continuously developed. Please write to ai4eic@gmail.com for any feedback.")
+    col_l, col1, col2, col_r = st.columns([1, 3, 3, 1])
+    with col1:
+        st.image("https://indico.bnl.gov/event/19560/logo-410523303.png")
+    with col2:
+        st.title("""AI4EIC - RAG QA-ChatBot""", anchor = "AI4EIC-RAG-QA-Bot", help = "Will Link to arxiv proceeding here.")
 
 class UserNotFoundError(Exception):
     pass

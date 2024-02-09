@@ -2,7 +2,7 @@ import argparse
 import sqlite3
 import os
 import bcrypt 
-
+"""Legacy script. Not supported anymore"""
 
 def hash_password(password: str):
     bytes = password.encode('utf-8')

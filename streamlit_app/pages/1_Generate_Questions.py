@@ -1,143 +1,213 @@
 from langchain_openai import ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 
-from langchain.schema import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
-
-from langchain.prompts import PromptTemplate
-
 import streamlit as st
 import numpy as np
 import arxiv, os
-from operator import itemgetter
 
-from app_utilities import num_tokens_from_prompt
+from app_utilities import num_tokens_from_prompt, SetHeader
+from langchain import callbacks
+from langsmith import Client
+
+from LangChainUtils.LLMChains import RunQuestionGeneration
 
 os.environ["LANGCHAIN_PROJECT"] = st.secrets["LANGCHAIN_EVAL_PROJECT"]
+os.environ["LANGCHAIN_RUN_NAME"] = "QA Generation"
 
-st.set_page_config(page_title="AI4EIC-RAG QA-ChatBot", page_icon="https://indico.bnl.gov/event/19560/logo-410523303.png", layout="wide")
-st.warning("This project is being continuously developed. Please report any feedback to ai4eic@gmail.com")
-col_l, col1, col2, col_r = st.columns([1, 3, 3, 1])
-with col1:
-    st.image("https://indico.bnl.gov/event/19560/logo-410523303.png")
-with col2:
-    st.title("""Generate Questions for Evaluations""", anchor = "GenerateQuestions", help = "Will Link to arxiv proceeding here.")
+GPT_CONTEXT_LEN = 27000 # 32k - 4096
+CHAR_PER_TOKEN = 4
+WORD_LIM = GPT_CONTEXT_LEN * CHAR_PER_TOKEN
 
-articles = open("Resources/ARXIV_SOURCES.info", "r").readlines()  
+client = Client()
+SetHeader("RAG Generate Questions")
+# Some explanations to do 
 
-def load_article(key: bool):
-      st.session_state["QuestionGen"] = key
+st.markdown(open("streamlit_app/Resources/Markdowns/QA_Generation.md", "r").read())
 
-if not st.session_state.get("Info_Container"):
-    st.session_state["Info_Container"] = st.container()
-with st.container():
-    pressed = st.button("Load an article", on_click = load_article, args = (True,))
-    if pressed:
-        with st.status("Loading article..."):
-            article = np.random.choice(articles).strip("\n")
-            st.write(f"Downloading {article} ID from arxiv.org...")
-            search = arxiv.Search(id_list=[article])
-            paper = next(arxiv.Client().results(search))
-        st.session_state["article"] = article
-        st.header("Loaded Article ID : " + article, divider = "rainbow")
-        st.subheader("Title")
-        st.write(paper.title)
-        st.subheader("Authors")
-        st.write('\n'.join([f'{i+1}. {auth.name}' for i, auth in enumerate(paper.authors)]))
-        st.subheader("Categories")
-        st.write('\n'.join([f'{i+1}. {cat}' for i, cat in enumerate(paper.categories)]))
-        st.subheader("Primary Category")
-        st.write(paper.primary_category)
-        st.subheader("Published")
-        st.write(str(paper.published))
-        st.subheader("Abstract")
-        st.write(paper.summary)
-        st.subheader("Published in Peer reviewed journal")
-        st.write(paper.doi)
-        st.subheader("PDF link")
-        st.write(paper.pdf_url)
-        st.session_state["pdf_url"] = paper.pdf_url
-        with st.status("Loading PDF into PyPDFLoader...."):
-            docs = PyPDFLoader(paper.pdf_url).load()
-            st.write("Counting tokens ......")
-            content = "\n".join([doc.page_content for doc in docs])
-            st.session_state["content"] = content
-            num_tokens = num_tokens_from_prompt(content, "gpt-3.5-turbo-1106")
-        st.subheader("Number of Pages:" + str(len(docs)))
-        st.subheader("Number of Tokens:" + str(num_tokens))
-        if (num_tokens > 12000):
-            st.warning("This article is too long. Please reload to select a shorter article....")
-            st.stop()
-    
-if not st.session_state.get("QuestionGen"):
+if not st.session_state.get("user_name"):
+    st.error("Please login to your account first to further continue and generate questions.")
     st.stop()
 
+# mode = 0 for user, 1 for annotator, 2 for developer   
+if st.session_state.get("user_mode", -1) > 0:
+    with st.sidebar:
+        st.toggle("Contribute to Evaluation", value = False, key = "contribute_to_eval", help="Toggle this to contribute to evaluation for each response")
+    if st.session_state.contribute_to_eval:
+        with st.container(border = True):
+            st.title("Langsmith details")
+            st.markdown("## PROJECT NAME: " + os.environ["LANGCHAIN_PROJECT"])
+            st.markdown("## USER: " + st.session_state.get("user_name"))
+            st.markdown("## RUN NAME: " + os.environ["LANGCHAIN_RUN_NAME"])
+
+# Start by defining article load as false
+article_keys = ["article_loaded", "article_primary_category", 
+                "article_categories", "article_title", 
+                "article_abstract", "article_url", "article_doi", 
+                "article_authors", "article_content", "article_id",
+                "article_date", "article_num_tokens", "article_pages",
+                "full_content"
+                ]
+
+if "load_article" not in st.session_state:
+    st.session_state.load_article = False
+
+
+articles = open("streamlit_app/Resources/ARXIV_SOURCES.info", "r").readlines()  
+
+def LoadArticle(Load: bool, article_keys: list):
+    for key in article_keys:
+        st.session_state[key] = None
+    st.session_state.questions = []
+    st.session_state.load_article = Load
+    st.session_state.generation_count = 0
+
+st.header("", divider = "rainbow")
+col_Al, col_A, colAr = st.columns([1, 4, 1])
+with col_A:
+    st.header("Load an Article from arxiv database to generate questions")
+    st.button("Load an article from arxiv..", on_click = LoadArticle, args = [True, article_keys])
+st.header("", divider = "rainbow")
+if st.session_state.load_article:
+    with st.status("Loading article...", expanded = True, state = "running") as status:
+        st.write("Selecting a random article....")
+        article = np.random.choice(articles).strip("\n")
+        st.write(f"Searching {article} ID from arxiv.org...")
+        try:
+            search = arxiv.Search(id_list=[article])
+            paper = next(arxiv.Client().results(search))
+        except:
+            status.update(label = "Unable to load article. Please try again.", state = "error", expanded = True)
+            st.stop()
+        st.session_state["article_id"] = article
+        st.session_state["article_title"] = paper.title
+        st.session_state["article_abstract"] = paper.summary
+        st.session_state["article_url"] = paper.pdf_url
+        st.session_state["article_doi"] = paper.doi
+        st.session_state["article_authors"] = '\n'.join([f'{i+1}. {auth.name}' for i, auth in enumerate(paper.authors)])
+        st.session_state["article_date"] = paper.published
+        st.session_state["article_primary_category"] = paper.primary_category
+        st.session_state["article_categories"] = ', '.join([f'{cat}' for i, cat in enumerate(paper.categories)])
+        st.write(f"Loading article {article} in memory...")
+        docs = PyPDFLoader(paper.pdf_url).load()
+        st.session_state.article_pages = len(set([doc.metadata.get('page') for doc in docs]))
+        full_content = "\n".join([doc.page_content for doc in docs])
+        if (len(full_content) > WORD_LIM):
+            status.update(label = f"Article {article} is too large to load in memory. Chunking it smaller to fit it.", state = "running", expanded = True)
+            st.warning("Too large article to load in memory. Chunking it smaller to fit it.")
+            start = np.random.randint(0, len(full_content) - WORD_LIM)
+            content = full_content[start:start + WORD_LIM]
+        else:
+            content = full_content
+        st.session_state["full_content"] = full_content
+        st.session_state["article_content"] = content
+        st.write(f"Article {article} successfully loaded in memory. Precounting tokens now...")
+        num_tokens = num_tokens_from_prompt(content, "gpt-3.5-turbo-1106")
+        st.session_state["article_num_tokens"] = num_tokens
+        st.session_state.article_loaded = True
+        st.session_state.load_article = False
+        status.update(label = f"Article {article} Successfully loaded and ready, Tokens = {num_tokens}!", state = "complete", expanded = False)
+
+if not st.session_state.get("article_id"):
+    st.stop()
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("Article ID", divider = "rainbow")
+    st.write(st.session_state.get("article_id", ""))
+    st.subheader("Paper Summary", divider = "rainbow")
+    st.write(st.session_state.get("article_abstract", ""))
+    st.subheader("Publication Date", divider = "rainbow")
+    st.write(st.session_state.get("article_date", ""))
+    st.subheader("Primary Category", divider = "rainbow")
+    st.write(st.session_state.get("article_primary_category", ""))
+    
+with col2:
+    st.subheader("Paper Title", divider = "rainbow")
+    st.write(st.session_state.get("article_title", ""))
+    st.subheader("Paper Authors", divider = "rainbow")
+    st.write(st.session_state.get("article_authors", ""))
+    st.subheader("Link to PDF", divider = "rainbow")
+    st.write(st.session_state.get("article_url", ""))
+    st.subheader("Published journal (if any)", divider = "rainbow")
+    st.write(st.session_state.get("article_journal", "Not Published Yet"))
+    st.subheader("Categories", divider = "rainbow")
+    st.write(st.session_state.get("article_categories", ""))
+    st.subheader("Num of Pages and tokens", divider = "rainbow")
+    st.markdown(r"__Pages__: " + str(st.session_state.get("article_pages", "")) + r"  &  __Tokens__: " + str(st.session_state.get("article_num_tokens", "")))
+
+if st.session_state.get("article_loaded") and len(st.session_state.get("article_content", [])) < WORD_LIM:
+    article_container = st.container(border = True)
+    article_container.subheader("Article Content", divider = "rainbow")
+    with st.expander("Expand to show", expanded = False):
+        st.write(st.session_state.get("article_content", ""))
+
 GPTDict = {"3.5": "gpt-3.5-turbo-1106", "4": "gpt-4-0125-preview"}
+prefix = open("Templates/QA_Generations/example_01.template").read()
 
-response = """
-{prefix}
-Now, Given the text within the tags <content> and </content> Generate {NQUESTIONS} targetted question that contains exactly {NCLAIMS} claims along with its answer. 
-Make sure the clearly label your question and answer exactly to the point. 
-Also, Make sure to use the exact information from this document and do not use any other information.
+def gen_submit(generate: bool):
+    st.session_state.response_container = st.empty()
+    st.session_state["Generate"] = generate
+    st.session_state.generation_count += 1
 
-THe answer is formatted as a json object and written in `python` format
+for ques in st.session_state.get("questions", []):
+    with st.expander("Question - " + ques["qnum"], expanded = False):
+        st.header("", divider = "rainbow")
+        st.subheader(ques["question"])
+        st.subheader("Answer")
+        st.write(ques["answer"])
+        if (len(ques["content"]) > WORD_LIM):
+            st.subheader("Content")
+            st.write(ques["content"])
+        st.header("", divider = "rainbow")
+        
 
-<content>
-{CONTEXT}
-</content>
-"""
-prefix = """
-            You are an expert in framing questions from a given content. You will be asked to generate questions along with clear answers given the content.
-            Here is an explanation to help you better understand the task:
-
-            A targetted question with `N` claims is defined as a question that contains exactly N claims to answer. 
-            For instance, an example of a targetted question with 2 claims is as follows:
-            
-            Q: When and Where will the Electron Ion Collider be constructed?
-            A:  ```python \n
-                {"n_claims" : 2, 
-                "claims": ["When will Electron Ion Collider be constructed", "Where will Electron Ion Collider be constructed"], 
-                "complete_response": " The Electron Ion Collider will be constructed in Long Island in NewYork by the end of 2035. \n", 
-                "answers": ["Long Island in NewYork", "2035"], 
-                "relevance_score": 100
-                } \n
-                ```
-            
-            Another example of a question with 3 claims is shown below
-            
-            Q: What is the dimension of the MAPS pixel layer in ITS3 EIC techonology? How many layers of MAPS detector will be in EIC? What is the thickness of the MAPS layer?
-            A:  ```python
-                {"n_claims" : 3, 
-                "claims": ["dimension of MAPS pixel layer", "number of layers of MAPS detector", "thickness of MAPS layer"], 
-                "complete_response": " Dimensions of MAPS pixel layer is 10x10 mm. \n There are a total of 7 layers in MAPS detector at EIC. \n The thickness of each layer of MAPS detector is 5um. ", 
-                "answers": ["10x10mm", "7", "5um"], 
-                "relevance_score": 100
-                }
-                ```
-            """
-prompt = PromptTemplate.from_template(response)
-def gen_submit(key: bool):
-    st.session_state["Generate"] = key
-with st.container():
+with st.container(border = True):
+    st.title("Lets Start Generating Questions")
     with st.form("Generate Question"):
-        n_claims = st.number_input("Number of claims to be generated in each question", min_value = 1, max_value = 10)
-        n_questions = st.number_input("Number of questions to be generated", min_value = 1, max_value = 5)
-        n_iterations = st.number_input("Number of iterations for each question", min_value = 1, max_value = 5)
-        GPTVersion = st.selectbox("GPT Version", ["4"])
-        st.form_submit_button("Generate", on_click = gen_submit, args = (True,))
-        if st.session_state.get("Generate"):
-            llm = ChatOpenAI(model_name=GPTDict[GPTVersion], 
-                            temperature=0, 
-                            max_tokens=4000)
-            chain = prompt | llm | StrOutputParser()
-            for i in range(n_iterations):
-                full_response = ""
-                st.header("Iteration " + str(i+1) + " from " + st.session_state["article"] + " at " + st.session_state["pdf_url"])
-                message_placeholder = st.empty()
-                for chunks in chain.stream({"prefix" : prefix, "NQUESTIONS":n_questions, "NCLAIMS":n_claims, "CONTEXT": st.session_state.get("content")}):
+        f_col1, f_col2, f_col3 = st.columns([1, 1, 1])
+        with f_col1:
+            n_questions = st.number_input("Number of questions to be generated", min_value = 1, max_value = 5)
+        with f_col2:
+            n_claims = st.number_input("Number of claims to be generated in each question", min_value = 1, max_value = 10)
+            st.form_submit_button("Generate", on_click = gen_submit, args = (True,))
+        with f_col3:
+            GPTVersion = st.selectbox("GPT Version", ["4"])
+             
+    if st.session_state.get("Generate"):
+        llm = ChatOpenAI(model_name=GPTDict[GPTVersion], 
+                         temperature=0, 
+                         max_tokens=4000
+                         )
+        chain = RunQuestionGeneration(llm).with_config({"run_name" : os.environ["LANGCHAIN_RUN_NAME"]
+                                }
+                               )
+        if (len(st.session_state["full_content"]) > WORD_LIM):
+            _start = np.random.randint(0, len(st.session_state["full_content"]) - WORD_LIM)
+            st.session_state["article_content"] = st.session_state["full_content"][_start:_start + WORD_LIM]
+        for i in range(n_questions):
+            full_response = ""
+            st.header("Question " + str(i+1) + " from " + st.session_state["article_id"] + " at " + st.session_state["article_url"])
+            message_placeholder = st.empty()
+            metadata = {"username": st.session_state.user_name, 
+                        "article_id": st.session_state["article_id"],
+                        "article_url": st.session_state["article_url"],
+                        "claims" : n_claims
+                        }
+            tags = [f"claims-{n_claims}", st.session_state["article_id"], GPTVersion]
+            with callbacks.collect_runs() as cb:
+                for chunks in chain.stream({"prefix" : prefix, "NCLAIMS":n_claims, "CONTEXT": st.session_state.get("article_content")}, {"metadata": metadata, "tags": tags}):
                     full_response += (chunks or "")
                     message_placeholder.write(full_response + "▌")
-                message_placeholder.write(full_response)
-                st.header("", divider = "rainbow")
-                st.session_state["Generate"] = False
+                st.session_state.DataGen_run_id = cb.traced_runs[0].id
+            message_placeholder.write(full_response)
+            st.header("", divider = "rainbow")
+            st.session_state.questions.append({"qnum" : f"Gen: {st.session_state.generation_count}, Q: {i}", 
+                                               "content" : st.session_state["article_content"],
+                                               "question": full_response.split("A:")[0], 
+                                               "answer": full_response.split("A:")[-1]
+                                               }
+                                              )
+            st.session_state["Generate"] = False
+            
             
