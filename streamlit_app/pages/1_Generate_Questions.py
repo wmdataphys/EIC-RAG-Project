@@ -210,7 +210,7 @@ with st.container(border = True):
                 st.session_state.DataGen_run_id = cb.traced_runs[0].id
                 st.session_state.run_url = client.read_run(st.session_state.DataGen_run_id).url
             message_placeholder.write(full_response) 
-            st.markdown(r"""<h2 style="text-align: center;">Link to trace [🛠️]""" + f"({st.session_state.run_url})" + "</h2>")
+            st.markdown(r"""<h2 style="text-align: center;">Link to trace [🛠️]""" + f"({st.session_state.run_url})" + "</h2>", unsafe_allow_html=True)
             st.header("", divider = "rainbow")
             st.session_state.questions.append({"qnum" : f"Gen: {st.session_state.generation_count}, Q: {i}", 
                                                "content" : st.session_state["article_content"],
