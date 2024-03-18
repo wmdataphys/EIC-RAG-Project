@@ -277,6 +277,11 @@ def add_to_dataset():
         outputs = OUTPUTS,
         dataset_id = st.session_state.get("dataset_id")
         )  
+    # SINCE ADDED NOW REDUCE THE COUNT 
+    df = pd.read_csv(st.secrets.SOURCES_DETAILS, sep = ",")
+    df[df["arxiv_id"] == st.session_state.get("dataset_arxiv_id")]["used_num_times"] -= 1
+    df["used_num_times"].mask(df['used_num_times'] < 0, 0, inplace = True)
+    df.to_csv(st.secrets.SOURCES_DETAILS, sep = ",", index = False)
 
 with st.container(border = True):
     st.title("Lets Start Generating Questions")
