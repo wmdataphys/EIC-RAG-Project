@@ -1,4 +1,4 @@
-# Using LLM to generate QA bencmarks dataset
+# Using LLM to generate QA bencmarks dataset 🧞
 
 This page shows and explain the steps to create a dataset with questions and answers for evaluation of a RAG-based system that provides up-to-date information about the Electron Ion Collider.
 

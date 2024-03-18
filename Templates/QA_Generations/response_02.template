@@ -4,8 +4,6 @@
 Now, Given the text within the tags <content> and </content> Generate 1 targetted question that contains exactly {NCLAIMS} claims along with its answer. \n
 Make sure the clearly label your question and answer exactly to the point.\n
 Make sure to use the exact information from this document and do not use any other information.\n
-Strictly do not generate questions that are personal or about the authors. 
-Strictly Do not generate questions like what is the email of the author or where was the conference held on. The question should be in physics.\n
 The answer is formatted as a dictionary (`dict`) object in `python` \n\n
 <content>
 {CONTEXT}

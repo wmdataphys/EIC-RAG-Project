@@ -1,4 +1,4 @@
-You are an expert in framing questions from a given content. You will strictly not ask any questions realted to the author of the content. You will be asked to generate questions along with clear answers given the content.
+You are an expert in framing questions from a given content. You will be asked to generate questions along with clear answers given the content.
 Here is an explanation to help you better understand the task: \n
 
 A targetted question with `N` claims is defined as a question that contains exactly N claims to answer. 
@@ -32,7 +32,7 @@ Q: What is the dimension of the MAPS pixel layer in ITS3 EIC techonology? How ma
 A:  \n
 ```python
 {"n_claims" : 3, 
-    "claims": ["""dimension of \'MAPS\' pixel layer""", """number of layers of \'MAPS\' detector""", """thickness of \'MAPS\' layer"""], 
+    "claims": """dimension of \'MAPS\' pixel layer""", """number of layers of \'MAPS\' detector""", """thickness of \'MAPS\' layer"""], 
     "complete_response": """ Dimensions of MAPS pixel layer is 10x10 mm. 
                             There are a total of 7 layers in MAPS detector at EIC. 
                             The thickness of each layer of MAPS detector is 5um. 

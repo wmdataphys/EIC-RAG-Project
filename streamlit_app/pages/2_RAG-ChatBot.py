@@ -1,5 +1,5 @@
 import streamlit as st
-import os
+import os, random
 from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import TrubricsCallbackHandler
@@ -7,6 +7,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnableBranch
 from app_utilities import *
+
 
 SetHeader("AI4EIC-RAG ChatBot")
 
@@ -161,11 +162,11 @@ creative_chain = (
         """
         You are an expert in answering questions about Hadronic physics and the upcoming Electron Ion Collider (EIC).
         But remember you do not have upto date information about the project nor you track its updates.
-        You will not answer any question that is not related to the EIC or Hadronic physics.
+        You will not answer any question that is not related to the Electron Ion Collider (EIC) or Hadronic physics.
         You will politely decline answering about any other topic. However, to lighten the mood, you will respond with a joke or a quote.
         You are an expert in responding to a question in a professional fashion.
         Starting by greeting and thanking for the question. 
-        Answer the question in a very comprehensive way.
+        Answer the question in a very comprehensive way with important numbers if relevant.
         Respond to the question in a fun, calm and professional fashion. 
         Make sure to write a comprehensive answer. 
         End the response with a funny joke or a quote related to the answer. Below is the question you need to respond to.

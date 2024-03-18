@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 import smtplib, random, string, os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -66,8 +67,11 @@ def request_account():
                 st.session_state["user_name"] = name
                 st.session_state["first_name"] =  st.secrets[name]["first_name"]
                 st.session_state["last_name"] =  st.secrets[name]["last_name"]
-                st.success("Welcome {} {}!".format(st.session_state.get("first_name", ""), st.session_state.get("last_name", "")))
+                st.success("Welcome {} {}!!! Will redirect to the chat bot in 3 seconds......".format(st.session_state.get("first_name", ""), st.session_state.get("last_name", "")))
                 st.session_state["user_mode"] = int(st.secrets[name]["mode"])
+                time.sleep(2)
+                st.switch_page("pages/2_RAG-ChatBot.py")
+        
     with st.expander("Request an Account"):
         if st.session_state.get("user_name"):
             st.info("You are already logged in !!!!")

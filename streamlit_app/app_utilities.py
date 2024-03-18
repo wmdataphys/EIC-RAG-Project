@@ -38,6 +38,12 @@ def get_user_info(db_name, username):
     else:
         return None
 
+
+
+def SetOpenAIModel(model_name: str):
+    if model_name == "4":
+        return False
+        
 class VectorDB(Enum):
     LANCE = 1
     CHROMA = 2
